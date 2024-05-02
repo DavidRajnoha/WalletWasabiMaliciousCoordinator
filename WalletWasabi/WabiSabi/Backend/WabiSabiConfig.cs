@@ -27,6 +27,11 @@ public class WabiSabiConfig : ConfigBase
 	{
 	}
 
+	// Malicious
+	[DefaultValue(false)]
+	[JsonProperty(PropertyName = "MaliciousRandom", DefaultValueHandling = DefaultValueHandling.Populate)]
+	public bool MaliciousRandom { get; set; } = false;
+
 	[DefaultValue(108)]
 	[JsonProperty(PropertyName = "ConfirmationTarget", DefaultValueHandling = DefaultValueHandling.Populate)]
 	public uint ConfirmationTarget { get; set; } = 108;

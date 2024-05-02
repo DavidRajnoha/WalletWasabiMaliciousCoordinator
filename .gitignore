@@ -280,3 +280,6 @@ lcov.info
 # This file is created by an F# VS Code plugin
 .ionide/symbolCache.db
 **/launchSettings.json
+
+# Patch files for the simulations setting
+*.patch

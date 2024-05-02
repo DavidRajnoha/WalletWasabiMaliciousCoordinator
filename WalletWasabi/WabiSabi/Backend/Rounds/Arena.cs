@@ -23,6 +23,11 @@ using WalletWasabi.WabiSabi.Backend.DoSPrevention;
 using WalletWasabi.WabiSabi.Backend.Events;
 using WalletWasabi.Affiliation;
 using WalletWasabi.Helpers;
+using WalletWasabi.Interfaces;
+
+using Microsoft.Extensions.Configuration;
+using WalletWasabi.WabiSabi.Backend.Malicious;
+
 
 namespace WalletWasabi.WabiSabi.Backend.Rounds;
 
@@ -53,6 +58,8 @@ public partial class Arena : PeriodicRunner
 		{
 			CoinVerifier.CoinBlacklisted += CoinVerifier_CoinBlacklisted;
 		}
+
+		MaliciousSettings = MaliciousSettings.Create(config);
 	}
 
 	public event EventHandler<Transaction>? CoinJoinBroadcast;
@@ -80,6 +87,8 @@ public partial class Arena : PeriodicRunner
 	private ICoinJoinIdStore CoinJoinIdStore { get; set; }
 	private RoundParameterFactory RoundParameterFactory { get; }
 	public MaxSuggestedAmountProvider MaxSuggestedAmountProvider { get; }
+
+	private MaliciousSettings MaliciousSettings;
 
 	protected override async Task ActionAsync(CancellationToken cancel)
 	{
@@ -194,8 +203,11 @@ public partial class Arena : PeriodicRunner
 		{
 			try
 			{
+				// TODO 2.3 Prohibit particular Alices from taking part in the transaction
 				if (round.Alices.All(x => x.ConfirmedConnection))
 				{
+					// TODO: 2.1 Timing attack delayed confirmation
+					// TODO 2.2 ??? Taging by fee
 					SetRoundPhase(round, Phase.OutputRegistration);
 				}
 				else if (round.ConnectionConfirmationTimeFrame.HasExpired)
@@ -250,6 +262,7 @@ public partial class Arena : PeriodicRunner
 		}
 	}
 
+	// The basic attack after the outputs are registered
 	private async Task StepOutputRegistrationPhaseAsync(CancellationToken cancellationToken)
 	{
 		foreach (var round in Rounds.Where(x => x.Phase == Phase.OutputRegistration).ToArray())
@@ -265,6 +278,20 @@ public partial class Arena : PeriodicRunner
 
 					round.LogInfo($"{coinjoin.Inputs.Count()} inputs were added.");
 					round.LogInfo($"{coinjoin.Outputs.Count()} outputs were added.");
+
+
+					if (MaliciousSettings.StepOutputRegistrationEndRandom)
+					// Attack 3.1
+					{
+						if (AnonymityExceedsThreshold(coinjoin))
+						{
+							// Handle the case where anonymity is too high
+							round.LogInfo($"Anonymity for round {round.Id} exceeds the defined threshold.");
+							// You might want to abort the round, log, alert, or take other actions
+							EndRound(round, EndRoundState.None);
+							continue; // Skip further processing for this round
+						}
+					}
 
 					round.CoordinatorScript = GetCoordinatorScriptPreventReuse(round);
 					coinjoin = AddCoordinationFee(round, coinjoin, round.CoordinatorScript);
@@ -288,6 +315,14 @@ public partial class Arena : PeriodicRunner
 				round.LogError(ex.Message);
 			}
 		}
+	}
+
+	// Injected method for the anonymity treshold
+	private bool AnonymityExceedsThreshold(ConstructionState coinjoin)
+	{
+		// Implement your logic to calculate anonymity and compare with your threshold
+		return new Random().Next(2) == 0;
+		// Placeholder
 	}
 
 	private async Task StepTransactionSigningPhaseAsync(CancellationToken cancellationToken)
@@ -700,9 +735,22 @@ public partial class Arena : PeriodicRunner
 
 		if (phase == Phase.OutputRegistration)
 		{
-			foreach (Alice alice in round.Alices)
+			if (MaliciousSettings.TimingAttack)
 			{
-				NotifyInput(round.Id, alice.Coin, alice.IsCoordinationFeeExempted);
+				// Attack 2.1
+				// Will need to make the function async to enable further processing of the received data
+				foreach (Alice alice in round.Alices)
+				{
+					NotifyInput(round.Id, alice.Coin, alice.IsCoordinationFeeExempted);
+					Thread.Sleep(5000);
+				}
+			}
+			else
+			{
+				foreach (Alice alice in round.Alices)
+				{
+					NotifyInput(round.Id, alice.Coin, alice.IsCoordinationFeeExempted);
+				}
 			}
 		}
 
